@@ -21,6 +21,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
   const barRef = useRef<HTMLDivElement>(null);
   const pctRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
+  const controlRef = useRef<(id: number, dir: "up" | "down") => void>(() => {});
   const fly = level.mode === "fly";
   const unit = fly ? " m" : "%";
   const statusRef = useRef<Status>("playing");
@@ -40,7 +41,12 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
     const ctx = canvas.getContext("2d")!;
     const sim = fly ? new FlySim(level) : new Sim(level);
     const renderer = new Renderer();
-    let holding = false;
+    // input: keyboard flags + every active pointer (mouse/finger) and what it is pressing
+    let keyUp = false;
+    let keyDown = false;
+    const pointers = new Map<number, "up" | "down">();
+    const upHeld = () => keyUp || [...pointers.values()].includes("up");
+    const downHeld = () => keyDown || [...pointers.values()].includes("down");
     let pressed = false;
     let acc = 0;
     let last = performance.now();
@@ -86,14 +92,16 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
     window.addEventListener("orientationchange", resize);
     document.addEventListener("fullscreenchange", resize);
 
+    /** called when any UP-type input goes down (jump in levels, climb in the tunnel) */
     const press = () => {
       audio.unlock();
       if (statusRef.current !== "playing") return;
-      if (!holding) pressed = true;
-      holding = true;
+      if (!upHeld()) pressed = true;
     };
-    const release = () => {
-      holding = false;
+    const releaseAll = () => {
+      keyUp = false;
+      keyDown = false;
+      pointers.clear();
     };
     const togglePause = () => {
       if (statusRef.current === "won") return;
@@ -103,18 +111,24 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       } else {
         setStatus("paused");
         audio.stopMusic();
-        holding = false;
+        releaseAll();
       }
       last = performance.now();
     };
 
     const isJumpKey = (k: string) => k === "Space" || k === "ArrowUp" || k === "KeyW" || k === "Enter";
+    const isDownKey = (k: string) => fly && (k === "ArrowDown" || k === "KeyS");
     const onKeyDown = (e: KeyboardEvent) => {
       if (isJumpKey(e.code)) {
         e.preventDefault();
         // don't let Space/Enter also "click" a HUD button that kept focus
         (document.activeElement as HTMLElement | null)?.blur?.();
         if (!e.repeat) press();
+        keyUp = true;
+      } else if (isDownKey(e.code)) {
+        e.preventDefault();
+        audio.unlock();
+        keyDown = true;
       } else if (e.code === "Escape" || e.code === "KeyP") {
         togglePause();
       } else if (e.code === "KeyR" && statusRef.current !== "won") {
@@ -122,18 +136,29 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (isJumpKey(e.code)) release();
+      if (isJumpKey(e.code)) keyUp = false;
+      else if (isDownKey(e.code)) keyDown = false;
     };
+    /** canvas presses count as UP; the on-screen arrow buttons call this with their direction */
+    const pointerDown = (id: number, dir: "up" | "down") => {
+      if (dir === "up") press();
+      else audio.unlock();
+      if (statusRef.current === "playing") pointers.set(id, dir);
+    };
+    controlRef.current = pointerDown;
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
-      press();
+      pointerDown(e.pointerId, "up");
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     canvas.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointerup", release);
-    window.addEventListener("pointercancel", release);
-    window.addEventListener("blur", release);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("blur", releaseAll);
     (window as unknown as { __togglePause: () => void }).__togglePause = togglePause;
 
     audio.startMusic(level);
@@ -151,6 +176,8 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           }
         } else if (!sim.p.won) {
           acc += dt;
+          const holding = upHeld();
+          if (sim instanceof FlySim) sim.downHeld = downHeld();
           while (acc >= PHYS.STEP) {
             sim.tick(holding, pressed);
             pressed = false;
@@ -200,9 +227,9 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("pointerup", release);
-      window.removeEventListener("pointercancel", release);
-      window.removeEventListener("blur", release);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("blur", releaseAll);
     };
   }, [level, fly]);
 
@@ -272,12 +299,39 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
 
         {fly && (
           <div className="start-tip" ref={tipRef}>
-            Hold to fly up · let go to drop
+            Hold ▲ to climb · ▼ to dive
           </div>
         )}
 
+        {fly && status === "playing" && (
+          <>
+            <button
+              className="fly-btn fly-down"
+              aria-label="Fly down"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                controlRef.current(e.pointerId, "down");
+              }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              ▼
+            </button>
+            <button
+              className="fly-btn fly-up"
+              aria-label="Fly up"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                controlRef.current(e.pointerId, "up");
+              }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              ▲
+            </button>
+          </>
+        )}
+
         {portrait && status === "playing" && (
-          <div className="rotate-tip" aria-live="polite">
+          <div className={`rotate-tip${fly ? " above-controls" : ""}`} aria-live="polite">
             <span className="rotate-icon">📱</span> Turn your phone sideways for a bigger view
           </div>
         )}
@@ -292,7 +346,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
               </p>
               <p className="controls">
                 {fly
-                  ? "Hold Space / ↑ / tap to fly up · let go to drop · the tunnel keeps shrinking · R restarts"
+                  ? "▲ / ↑ / W / Space to climb · ▼ / ↓ / S to dive · let go to slowly sink · R restarts"
                   : "Space / ↑ / tap to jump · hold to keep hopping · tap orbs mid-air · R restarts"}
               </p>
               <div className="row">

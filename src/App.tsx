@@ -76,7 +76,7 @@ export default function App() {
       >
         <span className="badge endless">∞ Endless</span>
         <span className="level-name">{ENDLESS.name}</span>
-        <span className="endless-desc">Hold to fly. The tunnel closes in from top and bottom. How far can you go?</span>
+        <span className="endless-desc">Steer ▲ / ▼ through a tunnel that closes in from top and bottom. How far can you go?</span>
         <span className="level-best">{skyBest ? `Best ${skyBest} m` : "No flights yet"}</span>
       </button>
 

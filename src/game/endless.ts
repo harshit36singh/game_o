@@ -2,9 +2,10 @@ import { PHYS, Sim } from "./engine";
 import type { Level } from "./types";
 
 export const FLY = {
-  UP: 62, // upward acceleration while holding (tiles/s²)
-  DOWN: 52, // gravity while released
-  MAXV: 11,
+  RISE: 10, // climb speed while UP is held (tiles/s)
+  DIVE: 10, // dive speed while DOWN is held
+  DRIFT: 1.6, // slow sink when nothing is pressed
+  RESPONSE: 16, // how quickly vertical speed reaches its target (higher = snappier)
   START_SPEED: 9,
   MAX_SPEED: 14,
   ACCEL: 0.008, // speed gained per tile travelled
@@ -34,6 +35,8 @@ export class FlySim extends Sim {
   // `declare` so these aren't reset to undefined after the base constructor calls reset()
   declare speed: number;
   declare thrusting: boolean;
+  /** set by the game every frame: is the DOWN control held? (UP comes in through tick) */
+  declare downHeld: boolean;
   declare phases: number[];
   declare seed: number;
   /** gravity stays off (the cube just bobs) until the player first presses */
@@ -52,6 +55,7 @@ export class FlySim extends Sim {
     this.phases = [0, 0, 0].map(() => rnd() * Math.PI * 2);
     this.speed = FLY.START_SPEED;
     this.thrusting = false;
+    this.downHeld = false;
     this.started = false;
     this.bob = 0;
     this.p.y = PHYS.CEIL / 2 - 0.5;
@@ -92,26 +96,29 @@ export class FlySim extends Sim {
     return this.center(x) + this.gap(x) / 2;
   }
 
-  override tick(holding: boolean, _pressed: boolean) {
+  /** `up` = UP control held. DOWN comes from `downHeld`. */
+  override tick(up: boolean, _pressed: boolean) {
     const p = this.p;
     if (p.dead) return;
     const dt = PHYS.STEP;
+    const down = this.downHeld;
 
-    this.thrusting = holding;
+    this.thrusting = up && !down;
     this.speed = Math.min(FLY.MAX_SPEED, FLY.START_SPEED + p.x * FLY.ACCEL);
-    if (holding) this.started = true;
+    if (up || down) this.started = true;
     if (!this.started) {
       // gentle hover so nobody crashes before they even touch the controls
       this.bob += dt;
       p.vy = Math.cos(this.bob * 4) * 0.8;
     } else {
-      p.vy += (holding ? FLY.UP : -FLY.DOWN) * dt;
+      // direct control: ease quickly toward a target climb/dive speed (no floaty momentum)
+      const target = up && !down ? FLY.RISE : down && !up ? -FLY.DIVE : -FLY.DRIFT;
+      p.vy += (target - p.vy) * Math.min(1, dt * FLY.RESPONSE);
     }
-    p.vy = Math.max(-FLY.MAXV, Math.min(FLY.MAXV, p.vy));
     p.x += this.speed * dt;
     p.y += p.vy * dt;
     // nose follows the flight path
-    p.rot = -Math.atan2(p.vy, this.speed) * 0.9;
+    p.rot = -Math.atan2(p.vy, this.speed) * 0.45;
 
     // forgiving hitbox: only the middle of the cube counts
     for (const ox of [0.2, 0.5, 0.8]) {

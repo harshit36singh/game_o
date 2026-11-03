@@ -370,6 +370,41 @@ button {
   transition: opacity 0.3s;
 }
 
+/* big thumb buttons for the flying mode */
+.fly-btn {
+  position: absolute;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  width: clamp(64px, 11vmin, 92px);
+  height: clamp(64px, 11vmin, 92px);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 4px solid var(--ink);
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 6px 0 var(--ink);
+  font-size: clamp(1.6rem, 4.5vmin, 2.3rem);
+  line-height: 1;
+  opacity: 0.92;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.05s, box-shadow 0.05s;
+}
+.fly-btn:active {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+.fly-up {
+  right: max(22px, env(safe-area-inset-right));
+  background: var(--clay);
+  color: var(--paper);
+}
+.fly-down {
+  left: max(22px, env(safe-area-inset-left));
+  background: #6a9fb5;
+  color: var(--paper);
+}
+
 .rotate-tip {
   position: absolute;
   left: 50%;
@@ -467,4 +502,8 @@ button {
   .panel { padding: 14px 18px; }
   .panel h2 { margin: 0 0 4px; font-size: 1.4rem; }
   .mascot.big { width: 54px; height: 54px; }
+}
+
+.rotate-tip.above-controls {
+  bottom: calc(max(22px, env(safe-area-inset-bottom)) + clamp(64px, 11vmin, 92px) + 18px);
 }

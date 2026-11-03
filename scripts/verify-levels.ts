@@ -55,11 +55,15 @@ function solveFly(seed: number, goal: number) {
     if (seen.has(key)) return false;
     seen.add(key);
     const snap = sim.snapshot();
-    // try the choice that steers toward the tunnel centre first
+    // inputs: up / nothing / down; try the one that steers toward the tunnel centre first
     const wantUp = p.y + 0.5 < sim.center(p.x + 2);
-    for (const hold of wantUp ? [true, false] : [false, true]) {
+    const order: Array<[boolean, boolean]> = wantUp
+      ? [[true, false], [false, false], [false, true]]
+      : [[false, true], [false, false], [true, false]];
+    for (const [up, down] of order) {
       sim.restore(snap);
-      for (let s = 0; s < sub && !sim.p.dead; s++) sim.tick(hold, false);
+      sim.downHeld = down;
+      for (let s = 0; s < sub && !sim.p.dead; s++) sim.tick(up, false);
       if (!sim.p.dead && dfs(frame + 1)) return true;
     }
     sim.restore(snap);
