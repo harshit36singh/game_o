@@ -2,7 +2,7 @@
 
 An original, cartoon-styled rhythm auto-runner for the browser. Your little clay cube slides forward on its own — tap to hop over spikes, bounce on mushroom pads, tap orbs mid-air, and flip gravity through portals.
 
-**Play:** deployed on Render (see `render.yaml`) and GitHub Pages: https://harshit36singh.github.io/game_o/
+**Play:** https://clay-hop.onrender.com
 
 ## Controls
 
