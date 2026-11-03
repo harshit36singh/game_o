@@ -75,7 +75,7 @@ export class Sim {
     this.startIdx = s.startIdx;
   }
 
-  private die() {
+  protected die() {
     if (this.p.dead) return;
     this.p.dead = true;
     this.events.push("die");

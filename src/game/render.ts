@@ -1,4 +1,5 @@
 import { PHYS, type Sim } from "./engine";
+import { FlySim } from "./endless";
 import type { Obj, Theme } from "./types";
 
 const T = 48; // pixels per tile
@@ -64,6 +65,9 @@ export class Renderer {
   private blinkT = 2;
   private time = 0;
   private shake = 0;
+  private exhaust = 0;
+  /** endless mode: best distance so far, drawn as a marker */
+  bestX = 0;
 
   reset() {
     this.particles = [];
@@ -118,8 +122,26 @@ export class Renderer {
     }
   }
 
-  update(dt: number) {
+  update(dt: number, sim?: Sim) {
     this.time += dt;
+    // little exhaust puffs while the flyer is thrusting
+    if (sim instanceof FlySim && sim.thrusting && !sim.p.dead) {
+      this.exhaust -= dt;
+      if (this.exhaust <= 0) {
+        this.exhaust = 0.05;
+        const p = sim.p;
+        this.particles.push({
+          x: p.x + 0.1,
+          y: p.y + 0.3,
+          vx: -4 - Math.random() * 2,
+          vy: -1 - Math.random() * 1.5,
+          r: 0.1 + Math.random() * 0.12,
+          life: 0,
+          max: 0.35,
+          color: "#ffffff",
+        });
+      }
+    }
     this.squash *= Math.pow(0.0005, dt);
     this.shake = Math.max(0, this.shake - dt);
     this.blinkT -= dt;
@@ -149,7 +171,8 @@ export class Renderer {
     this.drawSky(ctx, th, camX);
     this.drawCeiling(ctx, th, camX);
     this.drawGround(ctx, th, camX);
-    this.drawFinish(ctx, sim.level.length, camX);
+    if (sim instanceof FlySim) this.drawTunnel(ctx, sim, th, camX);
+    else this.drawFinish(ctx, sim.level.length, camX);
 
     for (let i = 0; i < sim.objs.length; i++) {
       const o = sim.objs[i];
@@ -274,6 +297,79 @@ export class Renderer {
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     ctx.stroke();
+  }
+
+  private drawTunnel(ctx: CanvasRenderingContext2D, sim: FlySim, th: Theme, camX: number) {
+    const x0 = Math.floor(camX) - 1;
+    const x1 = camX + VIEW_W / T + 2;
+    const STEP = 0.25;
+
+    // best-distance marker behind the walls
+    if (this.bestX >= 20) {
+      const bx = sx(this.bestX, camX);
+      if (bx > -60 && bx < VIEW_W + 60) {
+        ctx.save();
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx, VIEW_H);
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = th.spike;
+        ctx.stroke();
+        ctx.restore();
+        this.label(ctx, bx, sy(sim.center(this.bestX)), "BEST", th.spike, "#fffaf2");
+      }
+    }
+
+    // each wall is drawn twice: a grassy lip on the real edge, dirt slightly behind it
+    for (const side of ["top", "bottom"] as const) {
+      const edge = side === "top" ? (x: number) => sim.top(x) : (x: number) => sim.bottom(x);
+      const far = side === "top" ? -20 : VIEW_H + 20;
+      const inward = side === "top" ? 1 : -1;
+      for (const [off, fill] of [
+        [0, th.grass],
+        [0.32, th.ground],
+      ] as const) {
+        ctx.beginPath();
+        ctx.moveTo(sx(x0, camX), far);
+        for (let x = x0; x <= x1; x += STEP) ctx.lineTo(sx(x, camX), sy(edge(x) + off * inward));
+        ctx.lineTo(sx(x1, camX), far);
+        ctx.closePath();
+        inked(ctx, fill, 3);
+      }
+      // pebbles in the dirt
+      for (let t = Math.floor(x0); t < x1; t++) {
+        if (hash(t * 3 + (side === "top" ? 1 : 2)) > 0.5) continue;
+        const px = t + hash(t + 7);
+        const py = edge(px) + inward * (0.75 + hash(t + 11) * 1.2);
+        ctx.beginPath();
+        ctx.ellipse(sx(px, camX), sy(py), 6 + hash(t + 3) * 5, 4 + hash(t + 5) * 2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fill();
+      }
+    }
+
+    // distance signs on the floor every 50m
+    for (let m = Math.ceil(x0 / 50) * 50; m < x1; m += 50) {
+      if (m <= 0) continue;
+      const base = sim.bottom(m);
+      const x = sx(m, camX);
+      ctx.beginPath();
+      ctx.rect(x - 3, sy(base + 1.1), 6, T * 1.1);
+      inked(ctx, "#a07a55", 2.5);
+      this.label(ctx, x, sy(base + 1.25), `${m}m`, "#fffaf2", "#2b2118");
+    }
+  }
+
+  private label(ctx: CanvasRenderingContext2D, x: number, y: number, text: string, bg: string, fg: string) {
+    ctx.font = "700 15px Fredoka, ui-rounded, sans-serif";
+    const w = ctx.measureText(text).width + 16;
+    rrect(ctx, x - w / 2, y - 13, w, 26, 8);
+    inked(ctx, bg, 2.5);
+    ctx.fillStyle = fg;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, y + 1);
   }
 
   private drawFinish(ctx: CanvasRenderingContext2D, length: number, camX: number) {
@@ -409,6 +505,28 @@ export class Renderer {
     }
   }
 
+  /** A little propeller beanie for flying mode */
+  private drawPropeller(ctx: CanvasRenderingContext2D, s: number) {
+    const top = -s / 2;
+    ctx.beginPath();
+    ctx.arc(0, top + 2, 12, Math.PI, 0);
+    ctx.closePath();
+    inked(ctx, "#6a9fb5", 3);
+    ctx.beginPath();
+    ctx.moveTo(0, top - 10);
+    ctx.lineTo(0, top - 20);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    const spin = Math.abs(Math.sin(this.time * 30));
+    ctx.beginPath();
+    ctx.ellipse(0, top - 21, 4 + 16 * spin, 4, 0, 0, Math.PI * 2);
+    inked(ctx, "#ffd34d", 2.5);
+    ctx.beginPath();
+    ctx.arc(0, top - 21, 3, 0, Math.PI * 2);
+    inked(ctx, "#d97757", 2);
+  }
+
   private drawPlayer(ctx: CanvasRenderingContext2D, sim: Sim, camX: number) {
     const p = sim.p;
     const cx = sx(p.x + 0.5, camX);
@@ -417,12 +535,14 @@ export class Renderer {
     const stretch = 1 + this.squash;
     const sxScale = 1 / Math.sqrt(Math.max(0.5, stretch));
 
-    // soft shadow on whichever surface gravity points to
-    const shadowY = p.gd === 1 ? GROUND_Y + 4 : sy(PHYS.CEIL) - 4;
-    ctx.beginPath();
-    ctx.ellipse(cx, shadowY, 18, 4, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(43,33,24,0.15)";
-    ctx.fill();
+    // soft shadow on whichever surface gravity points to (none while flying)
+    if (!(sim instanceof FlySim)) {
+      const shadowY = p.gd === 1 ? GROUND_Y + 4 : sy(PHYS.CEIL) - 4;
+      ctx.beginPath();
+      ctx.ellipse(cx, shadowY, 18, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(43,33,24,0.15)";
+      ctx.fill();
+    }
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -441,6 +561,8 @@ export class Renderer {
     ctx.lineWidth = 3.5;
     ctx.strokeStyle = INK;
     ctx.stroke();
+
+    if (sim instanceof FlySim) this.drawPropeller(ctx, s);
 
     // googly eyes
     const blink = this.blinkT < 0;

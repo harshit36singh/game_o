@@ -219,6 +219,20 @@ button {
 .badge.easy { background: #c9e2a8; }
 .badge.normal { background: var(--sun); }
 .badge.hard { background: #f2a38c; }
+.badge.endless { background: #bfe1ea; }
+.endless-card {
+  width: min(900px, 100%);
+  margin-top: -14px;
+}
+.endless-card::after {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fffaf2 0 18%, var(--card) 20%);
+}
+.endless-desc {
+  font-size: 0.95rem;
+  opacity: 0.8;
+  margin-top: -6px;
+}
 .level-best {
   display: flex;
   align-items: center;
@@ -340,6 +354,22 @@ button {
   box-shadow: none;
 }
 
+.start-tip {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, 120%);
+  padding: 8px 16px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 4px 0 var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+
 .rotate-tip {
   position: absolute;
   left: 50%;
@@ -432,6 +462,8 @@ button {
   .level-card::after { width: 26px; height: 26px; top: 12px; right: 12px; }
   .level-name { font-size: 1.15rem; }
   .levels { gap: 14px; }
+  .endless-card { margin-top: -4px; }
+  .endless-desc { font-size: 0.85rem; }
   .panel { padding: 14px 18px; }
   .panel h2 { margin: 0 0 4px; font-size: 1.4rem; }
   .mascot.big { width: 54px; height: 54px; }

@@ -26,6 +26,8 @@ export interface Theme {
 
 export interface Level {
   id: string;
+  /** "run" = classic auto-runner (default), "fly" = endless tunnel flyer */
+  mode?: "run" | "fly";
   name: string;
   difficulty: "Easy" | "Normal" | "Hard";
   speed: number;

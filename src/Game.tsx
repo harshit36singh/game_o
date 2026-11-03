@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PHYS, Sim } from "./game/engine";
+import { FlySim } from "./game/endless";
 import { Renderer, setViewport } from "./game/render";
 import { audio } from "./game/audio";
 import type { Level } from "./game/types";
@@ -19,6 +20,9 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const pctRef = useRef<HTMLSpanElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const fly = level.mode === "fly";
+  const unit = fly ? " m" : "%";
   const statusRef = useRef<Status>("playing");
   const restartRef = useRef<() => void>(() => {});
   const [status, setStatusState] = useState<Status>("playing");
@@ -34,7 +38,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
   useEffect(() => {
     const canvas = canvasRef.current!;
     const ctx = canvas.getContext("2d")!;
-    const sim = new Sim(level);
+    const sim = fly ? new FlySim(level) : new Sim(level);
     const renderer = new Renderer();
     let holding = false;
     let pressed = false;
@@ -44,12 +48,15 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
     let raf = 0;
     let bestLocal = Number(localStorage.getItem(bestKey(level.id)) || 0);
     let view = setViewport(16 / 9);
+    if (fly) renderer.bestX = bestLocal;
 
-    const saveBest = (pct: number) => {
-      if (pct > bestLocal) {
-        bestLocal = pct;
-        localStorage.setItem(bestKey(level.id), String(pct));
-        setBest(pct);
+    /** best is a percentage for normal levels and metres for the endless tunnel */
+    const saveBest = (value: number) => {
+      if (value > bestLocal) {
+        bestLocal = value;
+        localStorage.setItem(bestKey(level.id), String(value));
+        setBest(value);
+        if (fly) renderer.bestX = value;
       }
     };
 
@@ -155,7 +162,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           audio.sfx(e);
           if (e === "die") {
             audio.stopMusic();
-            saveBest(Math.floor(sim.progress * 100));
+            saveBest(fly ? Math.floor(sim.p.x) : Math.floor(sim.progress * 100));
           } else if (e === "win") {
             audio.stopMusic();
             saveBest(100);
@@ -163,16 +170,23 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           }
         }
         sim.events = [];
-        renderer.update(dt);
+        renderer.update(dt, sim);
       }
 
       const scale = canvas.width / view.w;
       ctx.setTransform(scale, 0, 0, scale, 0, 0);
       renderer.draw(ctx, sim);
 
-      const pct = Math.floor(sim.progress * 100);
-      if (barRef.current) barRef.current.style.width = `${sim.progress * 100}%`;
-      if (pctRef.current) pctRef.current.textContent = `${pct}%`;
+      if (fly) {
+        const d = Math.floor(sim.p.x);
+        if (pctRef.current) pctRef.current.textContent = `${d} m · best ${Math.max(bestLocal, d)} m`;
+        if (barRef.current) barRef.current.style.width = bestLocal ? `${Math.min(100, (d / bestLocal) * 100)}%` : "0%";
+        if (tipRef.current) tipRef.current.style.opacity = !(sim as FlySim).started && !sim.p.dead ? "1" : "0";
+      } else {
+        const pct = Math.floor(sim.progress * 100);
+        if (barRef.current) barRef.current.style.width = `${sim.progress * 100}%`;
+        if (pctRef.current) pctRef.current.textContent = `${pct}%`;
+      }
       raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
@@ -190,7 +204,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       window.removeEventListener("pointercancel", release);
       window.removeEventListener("blur", release);
     };
-  }, [level]);
+  }, [level, fly]);
 
   const [isFull, setIsFull] = useState(!!document.fullscreenElement);
   const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
@@ -256,6 +270,12 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           </div>
         </div>
 
+        {fly && (
+          <div className="start-tip" ref={tipRef}>
+            Hold to fly up · let go to drop
+          </div>
+        )}
+
         {portrait && status === "playing" && (
           <div className="rotate-tip" aria-live="polite">
             <span className="rotate-icon">📱</span> Turn your phone sideways for a bigger view
@@ -266,8 +286,15 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           <div className="overlay">
             <div className="panel">
               <h2>Paused</h2>
-              <p className="muted">Best: {best}%</p>
-              <p className="controls">Space / ↑ / tap to jump · hold to keep hopping · tap orbs mid-air · R restarts</p>
+              <p className="muted">
+                Best: {best}
+                {unit}
+              </p>
+              <p className="controls">
+                {fly
+                  ? "Hold Space / ↑ / tap to fly up · let go to drop · the tunnel keeps shrinking · R restarts"
+                  : "Space / ↑ / tap to jump · hold to keep hopping · tap orbs mid-air · R restarts"}
+              </p>
               <div className="row">
                 <button className="btn primary" onClick={togglePause}>Resume</button>
                 <button className="btn" onClick={() => restartRef.current()}>Restart</button>

@@ -1,26 +1,30 @@
 import { useState } from "react";
 import Game, { bestKey } from "./Game";
-import { LEVELS } from "./game/levels";
+import { ENDLESS, LEVELS } from "./game/levels";
 import { audio } from "./game/audio";
 
 export default function App() {
-  const [levelIdx, setLevelIdx] = useState<number | null>(null);
+  // index into LEVELS, or "endless" for the Sky Tunnel
+  const [levelIdx, setLevelIdx] = useState<number | "endless" | null>(null);
   const [, refresh] = useState(0);
 
   if (levelIdx !== null) {
+    const endless = levelIdx === "endless";
     return (
       <Game
         key={levelIdx}
-        level={LEVELS[levelIdx]}
-        hasNext={levelIdx < LEVELS.length - 1}
+        level={endless ? ENDLESS : LEVELS[levelIdx]}
+        hasNext={!endless && levelIdx < LEVELS.length - 1}
         onExit={() => {
           setLevelIdx(null);
           refresh((n) => n + 1);
         }}
-        onNext={() => setLevelIdx(levelIdx + 1)}
+        onNext={() => setLevelIdx(endless ? null : levelIdx + 1)}
       />
     );
   }
+
+  const skyBest = Number(localStorage.getItem(bestKey(ENDLESS.id)) || 0);
 
   return (
     <div className="menu">
@@ -61,6 +65,20 @@ export default function App() {
           );
         })}
       </div>
+
+      <button
+        className="level-card endless-card"
+        style={{ "--card": "#6a9fb5", "--card2": ENDLESS.theme.skyTop } as React.CSSProperties}
+        onClick={() => {
+          audio.unlock();
+          setLevelIdx("endless");
+        }}
+      >
+        <span className="badge endless">∞ Endless</span>
+        <span className="level-name">{ENDLESS.name}</span>
+        <span className="endless-desc">Hold to fly. The tunnel closes in from top and bottom. How far can you go?</span>
+        <span className="level-best">{skyBest ? `Best ${skyBest} m` : "No flights yet"}</span>
+      </button>
 
       <p className="hint">Space / ↑ / click to jump · hold to keep hopping · tap orbs mid-air</p>
     </div>

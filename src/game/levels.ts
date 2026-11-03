@@ -199,3 +199,30 @@ export const LEVELS: Level[] = [
     objs: upsideHollow(),
   },
 ];
+
+const breeze: Theme = {
+  skyTop: "#bfe1ea",
+  skyBottom: "#f4f6ec",
+  hills: ["#bcd9c6", "#9cc5ad"],
+  ground: "#7b5a46",
+  grass: "#8fbf6a",
+  block: "#f2d29b",
+  blockShade: "#d4ad6c",
+  spike: "#d97757",
+  accent: "#ffd34d",
+};
+
+/** Endless flying mode: the tunnel is generated on the fly (see endless.ts). */
+export const ENDLESS: Level = {
+  id: "sky",
+  mode: "fly",
+  name: "Sky Tunnel",
+  difficulty: "Hard",
+  speed: 9,
+  bpm: 138,
+  root: 60,
+  scale: [0, 2, 4, 7, 9, 12],
+  length: Number.MAX_SAFE_INTEGER,
+  theme: breeze,
+  objs: [],
+};
