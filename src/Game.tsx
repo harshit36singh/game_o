@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PHYS, Sim } from "./game/engine";
-import { Renderer, VIEW_H, VIEW_W } from "./game/render";
+import { Renderer, setViewport } from "./game/render";
 import { audio } from "./game/audio";
 import type { Level } from "./game/types";
 
@@ -43,6 +43,7 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
     let deadFor = 0;
     let raf = 0;
     let bestLocal = Number(localStorage.getItem(bestKey(level.id)) || 0);
+    let view = setViewport(16 / 9);
 
     const saveBest = (pct: number) => {
       if (pct > bestLocal) {
@@ -71,9 +72,12 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.round(r.width * dpr);
       canvas.height = Math.round(r.height * dpr);
+      view = setViewport(r.width / r.height);
     };
     resize();
     window.addEventListener("resize", resize);
+    window.addEventListener("orientationchange", resize);
+    document.addEventListener("fullscreenchange", resize);
 
     const press = () => {
       audio.unlock();
@@ -101,6 +105,8 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isJumpKey(e.code)) {
         e.preventDefault();
+        // don't let Space/Enter also "click" a HUD button that kept focus
+        (document.activeElement as HTMLElement | null)?.blur?.();
         if (!e.repeat) press();
       } else if (e.code === "Escape" || e.code === "KeyP") {
         togglePause();
@@ -160,8 +166,8 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
         renderer.update(dt);
       }
 
-      const scale = canvas.width / VIEW_W;
-      ctx.setTransform(scale, 0, 0, canvas.height / VIEW_H, 0, 0);
+      const scale = canvas.width / view.w;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
       renderer.draw(ctx, sim);
 
       const pct = Math.floor(sim.progress * 100);
@@ -175,6 +181,8 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       cancelAnimationFrame(raf);
       audio.stopMusic();
       window.removeEventListener("resize", resize);
+      window.removeEventListener("orientationchange", resize);
+      document.removeEventListener("fullscreenchange", resize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       canvas.removeEventListener("pointerdown", onPointerDown);
@@ -183,6 +191,34 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
       window.removeEventListener("blur", release);
     };
   }, [level]);
+
+  const [isFull, setIsFull] = useState(!!document.fullscreenElement);
+  const [portrait, setPortrait] = useState(() => window.innerHeight > window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setPortrait(window.innerHeight > window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const canFullscreen = !!document.fullscreenEnabled;
+  useEffect(() => {
+    const onChange = () => setIsFull(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+        // phones: prefer landscape while playing (not supported everywhere, so ignore failures)
+        const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+        await o.lock?.("landscape").catch(() => {});
+      }
+    } catch {
+      /* fullscreen refused: nothing to do */
+    }
+  };
 
   const togglePause = () => (window as unknown as { __togglePause: () => void }).__togglePause();
 
@@ -209,17 +245,29 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
             >
               {muted ? "🔇" : "🔊"}
             </button>
+            {canFullscreen && (
+              <button className="icon-btn" aria-label={isFull ? "Exit full screen" : "Full screen"} onClick={toggleFullscreen}>
+                {isFull ? "🗗" : "⛶"}
+              </button>
+            )}
             <button className="icon-btn" aria-label="Pause" onClick={togglePause}>
               ⏸
             </button>
           </div>
         </div>
 
+        {portrait && status === "playing" && (
+          <div className="rotate-tip" aria-live="polite">
+            <span className="rotate-icon">📱</span> Turn your phone sideways for a bigger view
+          </div>
+        )}
+
         {status === "paused" && (
           <div className="overlay">
             <div className="panel">
               <h2>Paused</h2>
               <p className="muted">Best: {best}%</p>
+              <p className="controls">Space / ↑ / tap to jump · hold to keep hopping · tap orbs mid-air · R restarts</p>
               <div className="row">
                 <button className="btn primary" onClick={togglePause}>Resume</button>
                 <button className="btn" onClick={() => restartRef.current()}>Restart</button>
@@ -250,7 +298,6 @@ export default function Game({ level, hasNext, onExit, onNext }: Props) {
           </div>
         )}
       </div>
-      <p className="hint">Space / ↑ / click to jump · hold to keep hopping · tap orbs mid-air · Esc to pause · R to restart</p>
     </div>
   );
 }

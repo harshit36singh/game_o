@@ -1,10 +1,25 @@
 import { PHYS, type Sim } from "./engine";
 import type { Obj, Theme } from "./types";
 
-export const VIEW_W = 960;
-export const VIEW_H = 540;
 const T = 48; // pixels per tile
-const GROUND_Y = VIEW_H - 80; // screen y of world y=0
+const BASE_H = 540; // design height: ground strip + 9 tiles of play space + ceiling
+const MIN_W = 600; // never show less than ~12 tiles (matters on portrait phones)
+
+// The view adapts to the screen: wide screens see further ahead, tall screens zoom out
+// and get extra ceiling above the play area. Everything is in "virtual pixels".
+let VIEW_W = 960;
+let VIEW_H = BASE_H;
+let GROUND_Y = VIEW_H - 80; // screen y of world y=0
+
+/** Fit the virtual view to a screen aspect ratio (width / height). Returns the view size. */
+export function setViewport(aspect: number) {
+  const a = Math.max(0.3, Math.min(3.5, aspect || 16 / 9));
+  VIEW_W = Math.max(MIN_W, BASE_H * a);
+  VIEW_H = VIEW_W / a;
+  // on tall screens, centre the play area: extra height is split between ceiling and ground
+  GROUND_Y = BASE_H - 80 + (VIEW_H - BASE_H) / 2;
+  return { w: VIEW_W, h: VIEW_H };
+}
 const INK = "#2b2118";
 const PLAYER = "#d97757";
 const PLAYER_SHADE = "#b85c3e";
@@ -162,8 +177,8 @@ export class Renderer {
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
     // sun with a sleepy smile
-    const sunX = 760;
-    const sunY = 130;
+    const sunX = VIEW_W - 200;
+    const sunY = sy(PHYS.CEIL) + 120;
     ctx.beginPath();
     ctx.arc(sunX, sunY, 46, 0, Math.PI * 2);
     inked(ctx, "#ffd68a");
@@ -182,13 +197,13 @@ export class Renderer {
     const span = VIEW_W + 300;
     for (let i = 0; i < 6; i++) {
       const x = ((((i * 260 + hash(i) * 120 - cloudPar) % span) + span) % span) - 150;
-      const y = 80 + hash(i + 9) * 130;
+      const y = sy(PHYS.CEIL) + 90 + hash(i + 9) * 120;
       this.cloud(ctx, x, y, 0.7 + hash(i + 3) * 0.6);
     }
 
     // two layers of rolling hills
-    this.hills(ctx, th.hills[0], camX * T * 0.2, 330, 70, 0.008);
-    this.hills(ctx, th.hills[1], camX * T * 0.4, 390, 50, 0.013);
+    this.hills(ctx, th.hills[0], camX * T * 0.2, GROUND_Y - 130, 70, 0.008);
+    this.hills(ctx, th.hills[1], camX * T * 0.4, GROUND_Y - 70, 50, 0.013);
   }
 
   private cloud(ctx: CanvasRenderingContext2D, x: number, y: number, s: number) {
@@ -216,12 +231,16 @@ export class Renderer {
   private drawCeiling(ctx: CanvasRenderingContext2D, th: Theme, camX: number) {
     const y = sy(PHYS.CEIL);
     const off = (((camX * T) % 48) + 48) % 48;
+    // dirt above the play area (only noticeable on tall screens)
     ctx.beginPath();
-    ctx.moveTo(-60, -10);
+    ctx.rect(-10, -10, VIEW_W + 20, y - 14);
+    inked(ctx, th.ground, 3);
+    ctx.beginPath();
+    ctx.moveTo(-60, y - 30);
     ctx.lineTo(-60, y);
     for (let x = -off - 48; x < VIEW_W + 48; x += 48) ctx.arc(x + 24, y, 24, Math.PI, 0, true);
     ctx.lineTo(VIEW_W + 60, y);
-    ctx.lineTo(VIEW_W + 60, -10);
+    ctx.lineTo(VIEW_W + 60, y - 30);
     ctx.closePath();
     inked(ctx, th.grass, 3);
   }
